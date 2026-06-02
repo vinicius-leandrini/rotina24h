@@ -901,6 +901,10 @@ function finYM(){return st.finY+'-'+String(st.finM+1).padStart(2,'0');}
 function finMove(n){st.finM+=n;if(st.finM<0){st.finM=11;st.finY--;}if(st.finM>11){st.finM=0;st.finY++;}render();}
 function finKindChange(){const k=document.getElementById('fnKind').value;document.getElementById('gastoFields').style.display=k==='gasto'?'block':'none';document.getElementById('receitaFields').style.display=k==='receita'?'block':'none';}
 function uniq(a){return [...new Set(a.filter(Boolean))];}
+function incLines(){const s=new Set();db.fin.forEach(e=>{if(e.kind==='receita'&&e.tema)s.add(e.tema);});(db.finRec||[]).forEach(r=>{if(r.kind!=='gasto'&&r.tema)s.add(r.tema);});return [...s].sort((a,b)=>a.localeCompare(b));}
+function incOptions(sel){let ls=incLines();if(sel&&!ls.includes(sel))ls=[sel].concat(ls);let h='<option value="">— selecione —</option>';ls.forEach(l=>h+='<option value="'+esc(l)+'"'+(l===sel?' selected':'')+'>'+esc(l)+'</option>');return h+'<option value="__new__">➕ Nova linha de receita…</option>';}
+function incFromOptions(sel){const ls=incLines();if(sel&&!ls.includes(sel))ls.push(sel);let h='<option value="">— Geral (não atribuído) —</option>';ls.forEach(l=>h+='<option value="'+esc(l)+'"'+(l===sel?' selected':'')+'>'+esc(l)+'</option>');return h;}
+function incSourceChange(){const se=document.getElementById('fnSource');if(se&&se.value==='__new__'){se.value='';uiPrompt('Nome da nova linha de receita:','',(n)=>{n=(n||'').trim();se.innerHTML=incOptions(n);se.value=n||'';});}}
 function addFin(){
   const kind=document.getElementById('fnKind').value;
   const amount=Math.round((parseFloat(String(document.getElementById('fnAmount').value).replace(',','.'))||0)*100)/100;
@@ -913,7 +917,7 @@ function addFin(){
       if(r){if(nf==='once'){db.finRec=db.finRec.filter(x=>x.id!==r.id);db.fin.push({id:genId(),kind:'receita',date,amount,tema:src,note,planned});}else{r.amount=amount;r.start=date;r.freq=nf;r.tema=src;r.note=note;r.planned=planned;}}
     }else{const e=db.fin.find(x=>x.id===st.editFin.id);
       if(e){e.kind=kind;e.amount=amount;e.date=date;e.note=note;e.planned=planned;
-        if(kind==='gasto'){e.method=document.getElementById('fnMethod').value;let tema=document.getElementById('fnTema').value,sub=document.getElementById('fnSub').value,sub2=document.getElementById('fnSub2').value;if(tema==='__new__')tema='';if(sub==='__new__')sub='';if(sub2==='__new__')sub2='';e.tema=tema;e.sub=sub;e.sub2=sub2;}
+        if(kind==='gasto'){e.method=document.getElementById('fnMethod').value;let tema=document.getElementById('fnTema').value,sub=document.getElementById('fnSub').value,sub2=document.getElementById('fnSub2').value;if(tema==='__new__')tema='';if(sub==='__new__')sub='';if(sub2==='__new__')sub2='';e.tema=tema;e.sub=sub;e.sub2=sub2;e.fromInc=(document.getElementById('fnFromInc')||{}).value||'';}
         else{e.tema=document.getElementById('fnSource').value.trim()||'Receita';delete e.method;delete e.sub;delete e.sub2;delete e.group;delete e.part;delete e.parts;}}
     }
     st.editFin=null;save();render();window.scrollTo(0,0);return;
@@ -927,9 +931,10 @@ function addFin(){
     if(tema==='__new__')tema='';if(sub==='__new__')sub='';if(sub2==='__new__')sub2='';
     const parts=Math.max(1,parseInt(document.getElementById('fnParts').value,10)||1);
     const defer=parseInt((document.getElementById('fnDefer')||{}).value,10)||0;
+    const fromInc=(document.getElementById('fnFromInc')||{}).value||'';
     const group=parts>1?genId():null;const base=Math.floor(amount/parts*100)/100;
     for(let i=0;i<parts;i++){let amt=base;if(i===parts-1)amt=Math.round((amount-base*(parts-1))*100)/100;
-      db.fin.push({id:genId(),kind:'gasto',date:addMonthsStr(date,defer+i),amount:amt,method,tema,sub,sub2,note,group,part:parts>1?i+1:null,parts:parts>1?parts:null,planned});}
+      db.fin.push({id:genId(),kind:'gasto',date:addMonthsStr(date,defer+i),amount:amt,method,tema,sub,sub2,note,group,part:parts>1?i+1:null,parts:parts>1?parts:null,planned,fromInc});}
   }
   save();render();
 }
@@ -950,6 +955,20 @@ function renderFinance(m){
   const acumRec=sumUntil('receita',lastDay);
   const acumGas=sumUntil('gasto',lastDay);
   const saldoPago=recPago-gasPago,saldoPrev=rec-gas,saldoAcum=acumRec-acumGas;
+  const recByLine={},spentByLine={};
+  monthE.forEach(e=>{if(e.kind==='receita'){const L=e.tema||'(sem nome)';recByLine[L]=(recByLine[L]||0)+e.amount;}else if(e.fromInc){spentByLine[e.fromInc]=(spentByLine[e.fromInc]||0)+e.amount;}});
+  const unassigned=monthE.filter(e=>e.kind==='gasto'&&!e.fromInc).reduce((s,e)=>s+e.amount,0);
+  const allLines=[...new Set(Object.keys(recByLine).concat(Object.keys(spentByLine)))].sort((a,b)=>a.localeCompare(b));
+  let lineBoxes='';
+  if(allLines.length||unassigned>0){
+    lineBoxes='<div class="section-title" style="margin:16px 0 8px">Saldo por linha de receita</div><div class="fin-bal">';
+    allLines.forEach(L=>{const rcv=recByLine[L]||0,spt=spentByLine[L]||0,bal=rcv-spt;
+      lineBoxes+='<div class="b"><div class="bv '+(bal>=0?'pos':'neg')+'">'+(bal<0?'−':'')+fmtMoney(Math.abs(bal))+'</div><div class="bl">'+esc(L)+'</div><div style="font-size:9px;color:var(--text2);margin-top:3px;line-height:1.25">rec '+fmtMoney(rcv)+' · gasto '+fmtMoney(spt)+'</div></div>';});
+    if(unassigned>0)lineBoxes+='<div class="b"><div class="bv neg">−'+fmtMoney(unassigned)+'</div><div class="bl">Não atribuído</div><div style="font-size:9px;color:var(--text2);margin-top:3px;line-height:1.25">gastos sem linha</div></div>';
+    lineBoxes+='</div>';
+  }else{
+    lineBoxes='<div class="hint">Dica: ao lançar uma <b>receita</b> escolha a linha (fonte), e ao lançar um <b>gasto</b> escolha em “Saiu de qual receita?” de onde ele saiu — aí o saldo de cada linha aparece aqui.</div>';
+  }
   const nav=document.createElement('div');nav.className='card';
   nav.innerHTML='<div class="mnav"><button class="cal-nav" onclick="finMove(-1)">‹</button><div class="mm">'+MONTHS[st.finM]+' '+st.finY+'</div><button class="cal-nav" onclick="finMove(1)">›</button></div>'+
     '<div class="fin-bal"><div class="b"><div class="bv '+(saldoPago>=0?'pos':'neg')+'">'+fmtMoney(saldoPago)+'</div><div class="bl">Saldo do mês (pago)</div></div>'+
@@ -957,7 +976,8 @@ function renderFinance(m){
     '<div class="fin-bal"><div class="b"><div class="bv pos">'+fmtMoney(rec)+'</div><div class="bl">Receitas do mês</div></div>'+
     '<div class="b"><div class="bv neg">'+fmtMoney(gas)+'</div><div class="bl">Gastos do mês</div></div></div>'+
     '<div class="fin-bal"><div class="b" style="grid-column:1/-1"><div class="bv '+(saldoAcum>=0?'pos':'neg')+'">'+fmtMoney(saldoAcum)+'</div><div class="bl">Saldo acumulado (até o fim do mês)</div></div></div>'+
-    '<div class="hint"><b>Pago</b> = só o que já foi confirmado (sem os itens marcados como “planejado”). <b>Previsto</b> = inclui também os lançamentos planejados. Receitas/Gastos do mês mostram o total previsto. Saldo acumulado = tudo que entrou menos tudo que saiu até o fim deste mês.</div>';
+    lineBoxes+
+    '<div class="hint"><b>Pago</b> = só o que já foi confirmado (sem itens “planejado”). <b>Previsto</b> = inclui os planejados. Cada <b>linha de receita</b> mostra o saldo do mês (recebido − gasto atribuído a ela). Saldo acumulado = tudo que entrou menos tudo que saiu até o fim deste mês.</div>';
   m.appendChild(nav);
   const dlTema=uniq(db.fin.filter(e=>e.kind==='gasto').map(e=>e.tema));const dlSub=uniq(db.fin.map(e=>e.sub));const dlSub2=uniq(db.fin.map(e=>e.sub2));const dlSrc=uniq(db.fin.filter(e=>e.kind==='receita').map(e=>e.tema));
   let edEntry=null,edRule=null;
@@ -982,9 +1002,10 @@ function renderFinance(m){
       '<div class="field"><label>Tema</label><select id="fnTema" onchange="finTemaChange()"></select></div>'+
       '<div class="field"><label>Subtema</label><select id="fnSub" onchange="finSubChange()"></select></div>'+
       '<div class="field"><label>Sub-subtema</label><select id="fnSub2" onchange="finSub2Change()"></select></div>'+
+      '<div class="field"><label>Saiu de qual receita?</label><select id="fnFromInc">'+incFromOptions(edEntry?edEntry.fromInc:'')+'</select></div>'+
       (edEntry?'':'<div class="row2"><div class="field"><label>Parcelas</label><input type="number" id="fnParts" min="1" value="1"></div>'+
       '<div class="field"><label>Cobrança</label><select id="fnDefer"><option value="0" selected>No mês da compra</option><option value="1">No próximo mês</option></select></div></div>')+'</div>'+
-    '<div id="receitaFields" style="display:none"><div class="field"><label>Fonte</label><input type="text" id="fnSource" list="dlSrc" placeholder="Ex.: Salário" value="'+esc(edSrc)+'"></div>'+
+    '<div id="receitaFields" style="display:none"><div class="field"><label>Linha de receita (fonte)</label><select id="fnSource" onchange="incSourceChange()">'+incOptions(edSrc)+'</select></div>'+
       (edEntry?'':'<div class="field"><label>Repetição</label><select id="fnRecFreq">'+fOpt('once','Única')+fOpt('monthly','🔁 Todo mês')+fOpt('weekly','🔁 Toda semana')+'</select></div>')+'</div>'+
     '<div class="field"><label>Observação (opcional)</label><input type="text" id="fnNote" placeholder="" value="'+(edF?esc(edF.note||''):'')+'"></div>'+
     '<button class="btn" onclick="addFin()">'+(edF?'Atualizar lançamento':'Adicionar lançamento')+'</button>'+
@@ -1006,7 +1027,7 @@ function renderFinance(m){
   sorted.forEach(e=>{const isG=e.kind==='gasto';const mm=isG?methodMeta(e.method):['rec','💰','Receita'];
     const sub=[e.sub,e.sub2].filter(Boolean).join(' › ');
     const recl=e.rec?('🔁 '+(e.freq==='monthly'?'mensal':'semanal')):'';
-    const meta=[isG?mm[2]:'Receita',(e.planned?'📋 previsto':''),sub,recl,(e.part?'parcela '+e.part+'/'+e.parts:''),e.date.slice(8,10)+'/'+e.date.slice(5,7)].filter(Boolean).join(' · ');
+    const meta=[isG?mm[2]:'Receita',(e.planned?'📋 previsto':''),(isG&&e.fromInc?'de: '+e.fromInc:''),sub,recl,(e.part?'parcela '+e.part+'/'+e.parts:''),e.date.slice(8,10)+'/'+e.date.slice(5,7)].filter(Boolean).join(' · ');
     const del=e.rec?('delFinRec(\''+e.ruleId+'\')'):('delFin(\''+e.id+'\')');
     const edit=e.rec?('editFinRec(\''+e.ruleId+'\')'):('editFin(\''+e.id+'\')');
     const row=document.createElement('div');row.className='fin-item'+(e.planned?' planned':'');
@@ -1032,7 +1053,7 @@ window.addTask=addTask;window.delTask=delTask;window.setTaskStatus=setTaskStatus
 window.calMove=calMove;window.setPeriod=setPeriod;window.setGoal=setGoal;
 window.addCat=addCat;window.renameCat=renameCat;window.cycleColor=cycleColor;window.delCat=delCat;window.setThemeCat=setThemeCat;window.addTheme=addTheme;window.delTheme=delTheme;
 window.setHabitField=setHabitField;window.addHabit=addHabit;window.delHabit=delHabit;window.exportData=exportData;window.exportExcel=exportExcel;window.importData=importData;
-window.finMove=finMove;window.addFin=addFin;window.delFin=delFin;window.finKindChange=finKindChange;
+window.finMove=finMove;window.addFin=addFin;window.delFin=delFin;window.finKindChange=finKindChange;window.incSourceChange=incSourceChange;
 window.calSelMove=calSelMove;window.monthDayHint=monthDayHint;window.setTheme=setTheme;
 window.editTask=editTask;window.cancelEditTask=cancelEditTask;window.anToggle=anToggle;
 window.editFin=editFin;window.editFinRec=editFinRec;window.cancelEditFin=cancelEditFin;window.finToggle=finToggle;
