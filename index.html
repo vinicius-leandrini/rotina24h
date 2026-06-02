@@ -180,6 +180,10 @@ nav button{font-size:9px;padding:9px 1px 11px}
 .pos{color:var(--accent2)}.neg{color:#ff6b6b}
 .fin-item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--r-sm);background:var(--surface2);margin-bottom:8px}
 .fin-item.planned{opacity:.82;border:1px dashed var(--accent2)}
+.grp-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.grp-h:first-of-type{margin-top:4px}
+.grp-l{font-size:13px;font-weight:600;color:var(--text);text-transform:capitalize}
+.grp-v{font-size:11px;font-weight:600;white-space:nowrap}
 .fin-ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .fin-body{flex:1;min-width:0}
 .fin-t{font-size:14px;font-weight:500}
@@ -945,6 +949,24 @@ function finToggle(t){const i=st.finEx.indexOf(t);if(i>=0)st.finEx.splice(i,1);e
 function delFin(id){const e=db.fin.find(x=>x.id===id);if(!e)return;
   if(e.group)uiConfirm('Este gasto é parcelado. Excluir TODAS as parcelas?',()=>{db.fin=db.fin.filter(x=>x.group!==e.group);save();render();},'Excluir tudo');
   else uiConfirm('Excluir este lançamento?',()=>{db.fin=db.fin.filter(x=>x.id!==id);save();render();},'Excluir');}
+function finWeekKey(ds){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()-d.getDay());return dateStr(d);}
+function finWeekLabel(k){const s=new Date(k+'T12:00:00');const e=new Date(s);e.setDate(e.getDate()+6);const f=x=>x.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});return f(s)+' a '+f(e);}
+function finDayLabel(ds){return new Date(ds+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'});}
+function finRowEl(e){const isG=e.kind==='gasto';const mm=isG?methodMeta(e.method):['rec','💰','Receita'];
+  const sub=[e.sub,e.sub2].filter(Boolean).join(' › ');
+  const recl=e.rec?('🔁 '+(e.freq==='monthly'?'mensal':'semanal')):'';
+  const meta=[isG?mm[2]:'Receita',(e.planned?'📋 previsto':''),(isG&&e.fromInc?'de: '+e.fromInc:''),sub,recl,(e.part?'parcela '+e.part+'/'+e.parts:''),e.date.slice(8,10)+'/'+e.date.slice(5,7)].filter(Boolean).join(' · ');
+  const del=e.rec?('delFinRec(\''+e.ruleId+'\')'):('delFin(\''+e.id+'\')');
+  const edit=e.rec?('editFinRec(\''+e.ruleId+'\')'):('editFin(\''+e.id+'\')');
+  const row=document.createElement('div');row.className='fin-item'+(e.planned?' planned':'');
+  row.innerHTML='<div class="fin-ic" style="background:'+(isG?'rgba(255,107,107,.15)':'rgba(0,200,150,.15)')+'">'+mm[1]+'</div>'+
+    '<div class="fin-body"><div class="fin-t">'+esc(e.tema||(isG?'Gasto':'Receita'))+'</div><div class="fin-m">'+esc(meta)+(e.note?' · '+esc(e.note):'')+'</div></div>'+
+    '<div class="fin-amt '+(isG?'neg':'pos')+'">'+(isG?'−':'+')+fmtMoney(e.amount)+'</div>'+
+    '<div class="t-actions"><button class="icon-btn" onclick="'+edit+'">&#9998;</button><button class="icon-btn danger" onclick="'+del+'">🗑</button></div>';
+  return row;}
+function setFinView(v){st.finView=v;render();}
+function setFinFilter(k,v){if(!st.finFilter)st.finFilter={kind:'',method:'',tema:'',line:'',plan:''};st.finFilter[k]=v;render();}
+function clearFinFilter(){st.finFilter={kind:'',method:'',tema:'',line:'',plan:''};render();}
 function renderFinance(m){
   const ym=finYM();const monthE=effectiveMonth(st.finY,st.finM);
   const rec=monthE.filter(e=>e.kind==='receita').reduce((s,e)=>s+e.amount,0);
@@ -1021,21 +1043,49 @@ function renderFinance(m){
     const chips=gastoTemas.length>1?'<div class="filter-row">'+gastoTemas.map(t=>'<span class="chip'+(st.finEx.includes(t)?' ex':'')+'" data-t="'+esc(t)+'" onclick="finToggle(this.dataset.t)">'+esc(t)+'</span>').join('')+'</div>':'';
     ch.innerHTML='<div class="section-title">Gastos por tema (mês)</div>'+chips+'<div class="legend" id="finLeg"></div><div class="chart-wrap" style="height:200px"><canvas id="cFinTema"></canvas></div>'+(gastoTemas.length>1?'<div class="cap">Toque numa etiqueta acima para tirar (ou recolocar) um tema do gráfico.</div>':'');m.appendChild(ch);}
   const proj=document.createElement('div');proj.className='card';proj.innerHTML='<div class="section-title">Projeção de gastos (6 meses)</div><div class="chart-wrap" style="height:200px"><canvas id="cFinProj"></canvas></div><div class="hint">Inclui as parcelas já lançadas que vencem nos próximos meses.</div>';m.appendChild(proj);
-  const listC=document.createElement('div');listC.className='card';listC.innerHTML='<div class="section-title">Lançamentos de '+MONTHS[st.finM]+'</div>';
+  if(!st.finView)st.finView='month';
+  if(!st.finFilter)st.finFilter={kind:'',method:'',tema:'',line:'',plan:''};
+  const F=st.finFilter;
+  const listC=document.createElement('div');listC.className='card';
+  const vbtn=(v,l)=>'<button class="'+(st.finView===v?'on':'')+'" onclick="setFinView(\''+v+'\')">'+l+'</button>';
+  const opt=(v,l,cur)=>'<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(l)+'</option>';
+  const fTemas=[...new Set(monthE.filter(e=>e.kind==='gasto'&&e.tema).map(e=>e.tema))].sort((a,b)=>a.localeCompare(b));
+  const fLines=[...new Set(monthE.filter(e=>e.kind==='receita'&&e.tema).map(e=>e.tema).concat(monthE.filter(e=>e.kind==='gasto'&&e.fromInc).map(e=>e.fromInc)))].sort((a,b)=>a.localeCompare(b));
+  const active=F.kind||F.method||F.tema||F.line||F.plan;
+  listC.innerHTML='<div class="section-title">Lançamentos de '+MONTHS[st.finM]+'</div>'+
+    '<div class="seg" style="margin-bottom:12px">'+vbtn('month','Mês')+vbtn('week','Semana')+vbtn('day','Dia')+'</div>'+
+    '<div class="row2"><div class="field"><select onchange="setFinFilter(\'kind\',this.value)"><option value="">Tipo: todos</option>'+opt('gasto','Só gastos',F.kind)+opt('receita','Só receitas',F.kind)+'</select></div>'+
+      '<div class="field"><select onchange="setFinFilter(\'plan\',this.value)"><option value="">Situação: todas</option>'+opt('pago','Só pagos',F.plan)+opt('previsto','Só previstos',F.plan)+'</select></div></div>'+
+    '<div class="row2"><div class="field"><select onchange="setFinFilter(\'method\',this.value)"><option value="">Meio: todos</option>'+METHODS.map(x=>opt(x[0],x[1]+' '+x[2],F.method)).join('')+'</select></div>'+
+      '<div class="field"><select onchange="setFinFilter(\'tema\',this.value)"><option value="">Tema: todos</option>'+fTemas.map(t=>opt(t,t,F.tema)).join('')+'</select></div></div>'+
+    '<div class="field"><select onchange="setFinFilter(\'line\',this.value)"><option value="">Linha de receita: todas</option>'+fLines.map(l=>opt(l,l,F.line)).join('')+'</select></div>'+
+    (active?'<button class="tool-btn" style="margin:0 0 10px" onclick="clearFinFilter()">✕ Limpar filtros</button>':'');
   const sorted=monthE.slice().sort((a,b)=>b.date.localeCompare(a.date));
-  if(!sorted.length)listC.innerHTML+='<div style="font-size:13px;color:var(--text2)">Nenhum lançamento neste mês.</div>';
-  sorted.forEach(e=>{const isG=e.kind==='gasto';const mm=isG?methodMeta(e.method):['rec','💰','Receita'];
-    const sub=[e.sub,e.sub2].filter(Boolean).join(' › ');
-    const recl=e.rec?('🔁 '+(e.freq==='monthly'?'mensal':'semanal')):'';
-    const meta=[isG?mm[2]:'Receita',(e.planned?'📋 previsto':''),(isG&&e.fromInc?'de: '+e.fromInc:''),sub,recl,(e.part?'parcela '+e.part+'/'+e.parts:''),e.date.slice(8,10)+'/'+e.date.slice(5,7)].filter(Boolean).join(' · ');
-    const del=e.rec?('delFinRec(\''+e.ruleId+'\')'):('delFin(\''+e.id+'\')');
-    const edit=e.rec?('editFinRec(\''+e.ruleId+'\')'):('editFin(\''+e.id+'\')');
-    const row=document.createElement('div');row.className='fin-item'+(e.planned?' planned':'');
-    row.innerHTML='<div class="fin-ic" style="background:'+(isG?'rgba(255,107,107,.15)':'rgba(0,200,150,.15)')+'">'+mm[1]+'</div>'+
-      '<div class="fin-body"><div class="fin-t">'+esc(e.tema||(isG?'Gasto':'Receita'))+'</div><div class="fin-m">'+esc(meta)+(e.note?' · '+esc(e.note):'')+'</div></div>'+
-      '<div class="fin-amt '+(isG?'neg':'pos')+'">'+(isG?'−':'+')+fmtMoney(e.amount)+'</div>'+
-      '<div class="t-actions"><button class="icon-btn" onclick="'+edit+'">&#9998;</button><button class="icon-btn danger" onclick="'+del+'">🗑</button></div>';
-    listC.appendChild(row);});
+  const filtered=sorted.filter(e=>{
+    if(F.kind&&e.kind!==F.kind)return false;
+    if(F.method&&e.method!==F.method)return false;
+    if(F.tema&&e.tema!==F.tema)return false;
+    if(F.plan==='pago'&&e.planned)return false;
+    if(F.plan==='previsto'&&!e.planned)return false;
+    if(F.line&&!((e.kind==='receita'&&e.tema===F.line)||(e.kind==='gasto'&&e.fromInc===F.line)))return false;
+    return true;
+  });
+  if(!filtered.length){listC.innerHTML+='<div style="font-size:13px;color:var(--text2)">'+(active?'Nenhum lançamento com esses filtros.':'Nenhum lançamento neste mês.')+'</div>';}
+  else if(st.finView==='month'){filtered.forEach(e=>listC.appendChild(finRowEl(e)));}
+  else{
+    const groups={},order=[];
+    filtered.forEach(e=>{const key=st.finView==='day'?e.date:finWeekKey(e.date);if(!groups[key]){groups[key]=[];order.push(key);}groups[key].push(e);});
+    order.forEach(key=>{const items=groups[key];
+      const g=items.filter(x=>x.kind==='gasto').reduce((s,x)=>s+x.amount,0);
+      const r=items.filter(x=>x.kind==='receita').reduce((s,x)=>s+x.amount,0);
+      const label=st.finView==='day'?finDayLabel(key):('Semana de '+finWeekLabel(key));
+      const vals=(r>0?'<span class="pos">+'+fmtMoney(r)+'</span>':'')+((r>0&&g>0)?' · ':'')+(g>0?'<span class="neg">−'+fmtMoney(g)+'</span>':'');
+      const h=document.createElement('div');h.className='grp-h';
+      h.innerHTML='<span class="grp-l">'+label+'</span><span class="grp-v">'+vals+'</span>';
+      listC.appendChild(h);
+      items.forEach(e=>listC.appendChild(finRowEl(e)));
+    });
+  }
   m.appendChild(listC);
   setTimeout(()=>{
     if(document.getElementById('cFinTema')){const byTema={};monthE.filter(e=>e.kind==='gasto').forEach(e=>{const t=e.tema||'Sem tema';if(st.finEx.includes(t))return;byTema[t]=(byTema[t]||0)+e.amount;});
@@ -1053,7 +1103,7 @@ window.addTask=addTask;window.delTask=delTask;window.setTaskStatus=setTaskStatus
 window.calMove=calMove;window.setPeriod=setPeriod;window.setGoal=setGoal;
 window.addCat=addCat;window.renameCat=renameCat;window.cycleColor=cycleColor;window.delCat=delCat;window.setThemeCat=setThemeCat;window.addTheme=addTheme;window.delTheme=delTheme;
 window.setHabitField=setHabitField;window.addHabit=addHabit;window.delHabit=delHabit;window.exportData=exportData;window.exportExcel=exportExcel;window.importData=importData;
-window.finMove=finMove;window.addFin=addFin;window.delFin=delFin;window.finKindChange=finKindChange;window.incSourceChange=incSourceChange;
+window.finMove=finMove;window.addFin=addFin;window.delFin=delFin;window.finKindChange=finKindChange;window.incSourceChange=incSourceChange;window.setFinView=setFinView;window.setFinFilter=setFinFilter;window.clearFinFilter=clearFinFilter;
 window.calSelMove=calSelMove;window.monthDayHint=monthDayHint;window.setTheme=setTheme;
 window.editTask=editTask;window.cancelEditTask=cancelEditTask;window.anToggle=anToggle;
 window.editFin=editFin;window.editFinRec=editFinRec;window.cancelEditFin=cancelEditFin;window.finToggle=finToggle;
