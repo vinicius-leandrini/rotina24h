@@ -60,6 +60,9 @@ header p{font-size:13px;color:var(--text2);margin-top:2px}
 .mood-btn.sel{filter:none;opacity:1;border-color:var(--accent);background:rgba(74,158,255,.12)}
 .filter-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px;-webkit-overflow-scrolling:touch}
 .filter-row::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;padding:6px 12px;border-radius:16px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;user-select:none}
+.chip .cd{width:9px;height:9px;border-radius:50%;display:inline-block}
+.chip.ex{opacity:.42;text-decoration:line-through}
 .date-label{font-size:13px;font-weight:600;margin:0 0 10px;text-transform:capitalize}
 .legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
 .legend-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)}
@@ -175,6 +178,7 @@ nav button{font-size:9px;padding:9px 1px 11px}
 .fin-bal .bl{font-size:10px;color:var(--text2);margin-top:3px}
 .pos{color:var(--accent2)}.neg{color:#ff6b6b}
 .fin-item{display:flex;align-items:center;gap:10px;padding:10px;border-radius:var(--r-sm);background:var(--surface2);margin-bottom:8px}
+.fin-item.planned{opacity:.82;border:1px dashed var(--accent2)}
 .fin-ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .fin-body{flex:1;min-width:0}
 .fin-t{font-size:14px;font-weight:500}
@@ -297,19 +301,19 @@ const KEY='rotina24h_v4';
    Enquanto estiver vazio, o app funciona normalmente em modo local.
    Substitua os valores pelos do seu projeto Firebase (Configurações do projeto).
    ============================================================ */
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDJ_VNAMSb893g3xxDtb3LO8aeAO-PrFqE",
-  authDomain: "rotina24h-e06c5.firebaseapp.com",
-  projectId: "rotina24h-e06c5",
-  storageBucket: "rotina24h-e06c5.firebasestorage.app",
-  messagingSenderId: "749015224672",
-  appId: "1:749015224672:web:592551f335bed037f48e05"
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyDJ_VNAMSb893g3xxDtb3LO8aeAO-PrFqE",
+  authDomain:"rotina24h-e06c5.firebaseapp.com",
+  projectId:"rotina24h-e06c5",
+  storageBucket:"rotina24h-e06c5.firebasestorage.app",
+  messagingSenderId:"749015224672",
+  appId:"1:749015224672:web:592551f335bed037f48e05"
 };
 const CLOUD_ENABLED=!!FIREBASE_CONFIG.apiKey;
 let fbAuth=null,fbDb=null,cloudUser=null,saveTimer=null;
 let db={activities:[],tasks:[],daily:{},goals:{},cats:null,themes:null,habits:null};
 let charts={};
-let st={tab:'today',filterCat:'all',editId:null,saved:'',period:'week',formMood:0,newCatColor:PALETTE[0],themeCat:null,formWeekdays:[],prefillDate:null,calY:0,calM:0,calSel:''};
+let st={tab:'today',filterCat:'all',editId:null,saved:'',period:'week',formMood:0,newCatColor:PALETTE[0],themeCat:null,formWeekdays:[],prefillDate:null,calY:0,calM:0,calSel:'',editTaskId:null,editFin:null,anEx:[],finEx:[]};
 
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function ensureDefaults(){
@@ -420,7 +424,7 @@ function taskEl(x,ds,forceCtl){ds=ds||todayStr();const occ=forceCtl||x.type==='o
   const el=document.createElement('div');el.className='task'+(v===2?' done':'');
   el.innerHTML='<div class="task-head"><div class="task-body"><div class="task-title">'+esc(x.title)+'</div>'+
     '<div class="task-meta"><span>'+recurLabel(x)+'</span>'+(x.cat?'<span style="color:'+catColor(x.cat)+'">●</span> '+catLabel(x.cat):'')+(x.tema?' · '+esc(x.tema):'')+(x.sub?' › '+esc(x.sub):'')+(x.time?' · '+x.time+(x.end?'–'+x.end:''):(x.end?' · até '+x.end:''))+(!x.time&&!x.end&&x.dur?' · ⏱ '+fmtDur(x.dur):'')+'</div></div>'+
-    '<button class="icon-btn danger" onclick="delTask(\''+x.id+'\')">&#128465;</button></div>'+
+    '<div class="t-actions"><button class="icon-btn" onclick="editTask(\''+x.id+'\')">&#9998;</button><button class="icon-btn danger" onclick="delTask(\''+x.id+'\')">&#128465;</button></div></div>'+
     (occ?statusCtl(x,ds):'<div class="hint" style="margin:0">Recorrente — o status é marcado no dia em que ocorre (na aba Hoje ou no Calendário).</div>');
   return el;}
 
@@ -433,7 +437,7 @@ function render(){const m=document.getElementById('main');m.innerHTML='';
   else if(st.tab==='finance')renderFinance(m);
   else if(st.tab==='settings')renderSettings(m);
   renderNav();}
-function go(tab){st.tab=tab;st.editId=null;st.saved='';render();window.scrollTo(0,0);}
+function go(tab){st.tab=tab;st.editId=null;st.editTaskId=null;st.editFin=null;st.saved='';render();window.scrollTo(0,0);}
 function renderNav(){const nav=document.getElementById('nav');nav.innerHTML='';
   [['today','Hoje','🏠'],['plan','Planejar','🎯'],['add','Registrar','➕'],['analytics','Análises','📊'],['calendar','Agenda','🗓️'],['finance','Gastos','💰']].forEach(([id,lbl,ic])=>{
     const b=document.createElement('button');b.className=st.tab===id?'active':'';b.innerHTML='<span class="nic">'+ic+'</span>'+lbl;b.onclick=()=>go(id);nav.appendChild(b);});}
@@ -490,25 +494,32 @@ function renderToday(m){
 
 /* ===== PLANEJAR ===== */
 function renderPlan(m){
-  st.formWeekdays=[];
+  const ed=st.editTaskId?db.tasks.find(t=>t.id===st.editTaskId):null;
+  const curType=ed?ed.type:'once';
+  st.formWeekdays=(ed&&ed.type==='weekly'&&ed.weekdays)?[...ed.weekdays]:[];
   const card=document.createElement('div');card.className='card';
-  const catOpts=db.cats.map(c=>'<option value="'+c.id+'">'+esc(c.label)+'</option>').join('');
-  const wdBtns=WD.map((w,i)=>'<button type="button" class="wd-btn" onclick="toggleWd(this,'+i+')">'+w+'</button>').join('');
-  card.innerHTML='<div class="section-title">Nova tarefa</div>'+
-    '<div class="field"><input type="text" id="tkTitle" placeholder="O que precisa ser feito?"></div>'+
-    '<div class="row2"><div class="field"><label>Repetição</label><select id="tkType" onchange="planTypeChange()"><option value="once" selected>📌 Pontual</option><option value="daily">🔁 Todo dia</option><option value="weekly">🔁 Semanal (dias)</option><option value="monthly">🔁 Mensal</option></select></div>'+
+  const catOpts=db.cats.map(c=>'<option value="'+c.id+'"'+(ed&&ed.cat===c.id?' selected':'')+'>'+esc(c.label)+'</option>').join('');
+  const tyOpt=(v,l)=>'<option value="'+v+'"'+(curType===v?' selected':'')+'>'+l+'</option>';
+  const thOpts='<option value="">—</option>'+(ed?themesFor(ed.cat).map(t=>'<option value="'+esc(t)+'"'+(ed.tema===t?' selected':'')+'>'+esc(t)+'</option>').join(''):'');
+  const wdBtns=WD.map((w,i)=>'<button type="button" class="wd-btn'+(st.formWeekdays.includes(i)?' on':'')+'" onclick="toggleWd(this,'+i+')">'+w+'</button>').join('');
+  const dsp=t=>'style="display:'+(curType===t?'block':'none')+'"';
+  card.innerHTML='<div class="section-title">'+(ed?'Editar tarefa':'Nova tarefa')+'</div>'+
+    '<div class="field"><input type="text" id="tkTitle" placeholder="O que precisa ser feito?" value="'+(ed?esc(ed.title):'')+'"></div>'+
+    '<div class="row2"><div class="field"><label>Repetição</label><select id="tkType" onchange="planTypeChange()">'+tyOpt('once','📌 Pontual')+tyOpt('daily','🔁 Todo dia')+tyOpt('weekly','🔁 Semanal (dias)')+tyOpt('monthly','🔁 Mensal')+'</select></div>'+
     '<div class="field"><label>Categoria</label><select id="tkCat" onchange="planCatChange()"><option value="">—</option>'+catOpts+'</select></div></div>'+
-    '<div class="row2"><div class="field"><label>Tema</label><select id="tkTaskTheme"><option value="">—</option></select></div>'+
-    '<div class="field"><label>Subtema</label><input type="text" id="tkTaskSub" list="dlTaskSub" placeholder="opcional"></div></div>'+
+    '<div class="row2"><div class="field"><label>Tema</label><select id="tkTaskTheme">'+thOpts+'</select></div>'+
+    '<div class="field"><label>Subtema</label><input type="text" id="tkTaskSub" list="dlTaskSub" placeholder="opcional" value="'+(ed&&ed.sub?esc(ed.sub):'')+'"></div></div>'+
     '<datalist id="dlTaskSub">'+uniq(db.tasks.map(t=>t.sub)).map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>'+
-    '<div class="field" id="onceWrap"><label>Data</label><input type="date" id="tkDate" value="'+todayStr()+'"></div>'+
-    '<div class="field" id="weekWrap" style="display:none"><label>Dias da semana</label><div class="wd-row">'+wdBtns+'</div></div>'+
-    '<div class="field" id="monthWrap" style="display:none"><label>Dia do mês</label><input type="number" id="tkMonthDay" min="1" max="31" value="1" oninput="monthDayHint()"><div class="hint" id="mdHint"></div></div>'+
-    '<div class="row2"><div class="field"><label>Início (opcional)</label><input type="time" id="tkTime"></div>'+
-    '<div class="field"><label>Término (opcional)</label><input type="time" id="tkEnd"></div></div>'+
-    '<button class="btn" onclick="addTask()">Adicionar tarefa</button>'+
+    '<div class="field" id="onceWrap" '+dsp('once')+'><label>Data</label><input type="date" id="tkDate" value="'+(ed&&ed.date?ed.date:todayStr())+'"></div>'+
+    '<div class="field" id="weekWrap" '+dsp('weekly')+'><label>Dias da semana</label><div class="wd-row">'+wdBtns+'</div></div>'+
+    '<div class="field" id="monthWrap" '+dsp('monthly')+'><label>Dia do mês</label><input type="number" id="tkMonthDay" min="1" max="31" value="'+(ed&&ed.monthDay?ed.monthDay:1)+'" oninput="monthDayHint()"><div class="hint" id="mdHint"></div></div>'+
+    '<div class="row2"><div class="field"><label>Início (opcional)</label><input type="time" id="tkTime" value="'+(ed&&ed.time?ed.time:'')+'"></div>'+
+    '<div class="field"><label>Término (opcional)</label><input type="time" id="tkEnd" value="'+(ed&&ed.end?ed.end:'')+'"></div></div>'+
+    '<button class="btn" onclick="addTask()">'+(ed?'Atualizar tarefa':'Adicionar tarefa')+'</button>'+
+    (ed?'<button class="btn" style="margin-top:8px;background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="cancelEditTask()">Cancelar edição</button>':'')+
     '<div class="hint"><b>Pontual</b>: uma data específica. <b>Todo dia</b>: repete diariamente. <b>Semanal</b>: escolha os dias (ex.: seg e qui). <b>Mensal</b>: um dia fixo do mês.<br>✅ Ao marcar uma tarefa como <b>Feita</b>, ela entra automaticamente nos seus <b>registros</b> com a duração planejada — você não precisa registrar de novo. Se desmarcar, o registro é removido.</div>';
   m.appendChild(card);
+  if(curType==='monthly')setTimeout(monthDayHint,0);
 
   const groups=[['daily','🔁','Diárias'],['weekly','🔁','Semanais'],['monthly','🔁','Mensais'],['once','📌','Pontuais']];
   let any=false;
@@ -539,12 +550,28 @@ function addTask(){const title=document.getElementById('tkTitle').value.trim();i
   const type=document.getElementById('tkType').value,cat=document.getElementById('tkCat').value,time=document.getElementById('tkTime').value;
   const end=document.getElementById('tkEnd').value;
   const tema=document.getElementById('tkTaskTheme').value;const sub=document.getElementById('tkTaskSub').value.trim();
+  if(type==='weekly'&&!st.formWeekdays.length){uiAlert('Escolha ao menos um dia da semana.');return;}
+  const ed=st.editTaskId?db.tasks.find(t=>t.id===st.editTaskId):null;
+  if(ed){
+    ed.title=title;ed.type=type;ed.cat=cat;ed.time=time;
+    if(end)ed.end=end;else delete ed.end;
+    if(tema)ed.tema=tema;else delete ed.tema;
+    if(sub)ed.sub=sub;else delete ed.sub;
+    if(type==='once'){ed.date=document.getElementById('tkDate').value;if(typeof ed.status!=='number')ed.status=0;delete ed.weekdays;delete ed.monthDay;}
+    else{if(!ed.statusByDate)ed.statusByDate={};delete ed.date;delete ed.status;
+      if(type==='weekly'){ed.weekdays=[...st.formWeekdays].sort();delete ed.monthDay;}
+      else if(type==='monthly'){ed.monthDay=Math.min(31,Math.max(1,parseInt(document.getElementById('tkMonthDay').value,10)||1));delete ed.weekdays;}
+      else{delete ed.weekdays;delete ed.monthDay;}}
+    st.editTaskId=null;save();render();window.scrollTo(0,0);return;
+  }
   const tk={id:genId(),title,type,cat,time,created:todayStr()};if(end)tk.end=end;if(tema)tk.tema=tema;if(sub)tk.sub=sub;
   if(type==='once'){tk.date=document.getElementById('tkDate').value;tk.status=0;}
-  else if(type==='weekly'){if(!st.formWeekdays.length){uiAlert('Escolha ao menos um dia da semana.');return;}tk.weekdays=[...st.formWeekdays].sort();tk.statusByDate={};}
+  else if(type==='weekly'){tk.weekdays=[...st.formWeekdays].sort();tk.statusByDate={};}
   else if(type==='monthly'){tk.monthDay=Math.min(31,Math.max(1,parseInt(document.getElementById('tkMonthDay').value,10)||1));tk.statusByDate={};}
   else{tk.statusByDate={};}
   db.tasks.push(tk);save();render();}
+function editTask(id){st.editTaskId=id;st.tab='plan';render();window.scrollTo(0,0);}
+function cancelEditTask(){st.editTaskId=null;render();window.scrollTo(0,0);}
 function delTask(id){uiConfirm('Excluir esta tarefa?',()=>{db.tasks=db.tasks.filter(t=>t.id!==id);save();render();},'Excluir');}
 
 /* ===== REGISTRAR ===== */
@@ -601,23 +628,34 @@ function renderCalendar(m){
     const cls='cal-day'+(ds===todayS?' today':'')+(ds===st.calSel?' sel':'');
     const e=document.createElement('div');e.className=cls;
     e.innerHTML='<span>'+d+'</span><div class="cal-dots">'+dots+'</div>'+(tasks.length?'<div class="cal-task"></div>':'');
-    e.onclick=()=>{st.calSel=ds;render();};
+    e.onclick=()=>selectCalDay(ds,e);
     grid.appendChild(e);
   }
   head.appendChild(grid);
   head.innerHTML+='<div class="hint"><span style="color:var(--accent)">●</span> bolinhas = atividades registradas (cor da categoria) · <span style="color:var(--accent2)">○</span> anel = tarefa prevista nesse dia.</div>';
   m.appendChild(head);
 
-  const sel=st.calSel;const dObj=new Date(sel+'T12:00:00');
-  const detail=document.createElement('div');detail.className='card';
-  detail.innerHTML='<div class="mnav"><button class="cal-nav" onclick="calSelMove(-1)">‹</button><div class="mm" style="font-size:14px">'+dObj.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})+'</div><button class="cal-nav" onclick="calSelMove(1)">›</button></div>';
+  const detail=document.createElement('div');detail.className='card';detail.id='calDetail';
+  fillCalDetail(detail,st.calSel);
+  m.appendChild(detail);
+}
+function fillCalDetail(detail,sel){
+  detail.innerHTML='';
+  const dObj=new Date(sel+'T12:00:00');
+  const nav=document.createElement('div');nav.className='mnav';nav.innerHTML='<button class="cal-nav" onclick="calSelMove(-1)">‹</button><div class="mm" style="font-size:14px">'+dObj.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})+'</div><button class="cal-nav" onclick="calSelMove(1)">›</button>';detail.appendChild(nav);
   const agenda=document.createElement('div');renderDayAgenda(agenda,sel);detail.appendChild(agenda);
   const tasks=db.tasks.filter(x=>occursOn(x,dObj));
   if(tasks.length){const th=document.createElement('div');th.className='bucket-h';th.style.marginTop='16px';th.innerHTML='<span class="be">🎯</span>Marcar tarefas do dia';detail.appendChild(th);
     tasks.sort((a,b)=>(a.time||'').localeCompare(b.time||'')).forEach(x=>detail.appendChild(taskEl(x,sel,true)));}
   const btn=document.createElement('button');btn.className='btn';btn.style.marginTop='14px';btn.textContent='+ Registrar atividade neste dia';btn.onclick=()=>{st.prefillDate=sel;go('add');};
   detail.appendChild(btn);
-  m.appendChild(detail);
+}
+function selectCalDay(ds,cell){
+  st.calSel=ds;
+  if(cell&&cell.parentNode){cell.parentNode.querySelectorAll('.cal-day.sel').forEach(c=>c.classList.remove('sel'));cell.classList.add('sel');}
+  const det=document.getElementById('calDetail');
+  if(det){fillCalDetail(det,ds);det.scrollIntoView({behavior:'smooth',block:'start'});}
+  else render();
 }
 function hm2min(hm){const[h,m]=hm.split(':').map(Number);return h*60+m;}
 function dayEvents(sel){const dObj=new Date(sel+'T12:00:00');const evs=[];
@@ -748,7 +786,12 @@ function renderAnalytics(m){
   const seg=document.createElement('div');seg.className='seg';
   seg.innerHTML='<button class="'+(st.period==='week'?'on':'')+'" onclick="setPeriod(\'week\')">Semana (7d)</button><button class="'+(st.period==='month'?'on':'')+'" onclick="setPeriod(\'month\')">Mês (30d)</button>';
   m.appendChild(seg);
-  const list=periodActs();const tot=list.reduce((s,a)=>s+durMin(a),0);const bc=minByCat(list);const days=new Set(list.map(a=>a.date)).size||1;
+  const listAll=periodActs();
+  const acats=[...new Set(listAll.map(a=>a.cat))];
+  if(acats.length>1){const fr=document.createElement('div');fr.className='filter-row';
+    fr.innerHTML=acats.map(c=>'<span class="chip'+(st.anEx.includes(c)?' ex':'')+'" onclick="anToggle(\''+c+'\')"><span class="cd" style="background:'+catColor(c)+'"></span>'+esc(catLabel(c))+'</span>').join('');
+    m.appendChild(fr);}
+  const list=listAll.filter(a=>!st.anEx.includes(a.cat));const tot=list.reduce((s,a)=>s+durMin(a),0);const bc=minByCat(list);const days=new Set(list.map(a=>a.date)).size||1;
   const met=document.createElement('div');met.className='metrics';
   met.innerHTML='<div class="metric"><div class="metric-val">'+list.length+'</div><div class="metric-lbl">Registros</div></div>'+
     '<div class="metric"><div class="metric-val">'+Math.round(tot/60)+'h</div><div class="metric-lbl">Tempo</div></div>'+
@@ -760,6 +803,12 @@ function renderAnalytics(m){
   const a3=document.createElement('div');a3.className='card';a3.innerHTML='<div class="section-title">Tendência ao longo do tempo</div><div class="chart-wrap" style="height:200px"><canvas id="cTrend"></canvas></div><div class="cap"><b>Para que serve:</b> mostra dia a dia quantas horas você registrou, para enxergar se está mantendo o controle da rotina ou deixando de registrar (linha caindo).</div>';m.appendChild(a3);
   const a4=document.createElement('div');a4.className='card';a4.innerHTML='<div class="section-title">Mapa de calor por horário</div><div id="heat"></div><div class="cap"><b>Para que serve:</b> mostra em quais horários do dia você é mais ativo. Cada coluna é um bloco de 3h; quanto mais forte a cor, mais tempo de atividade naquele horário. Bom para descobrir seus picos e janelas ociosas.</div>';m.appendChild(a4);
   const gc=document.createElement('div');gc.className='card';gc.innerHTML='<div class="section-title">Metas por categoria (h/semana)</div><div id="goalsBody"></div><div class="hint">Defina ao lado quantas horas por semana você quer dedicar a cada área. A barra mostra o quanto você já cumpriu nesta semana.</div>';m.appendChild(gc);
+  if(db.habits.length){const nd=st.period==='week'?7:30;const dts=[];for(let i=0;i<nd;i++){const d=new Date();d.setDate(d.getDate()-i);dts.push(dateStr(d));}
+    const hb=document.createElement('div');hb.className='card';let hh='<div class="section-title">Acompanhamento de hábitos ('+nd+' dias)</div>';
+    db.habits.forEach(h=>{const done=dts.filter(ds=>habitDone(ds,h)).length;const pct=Math.round(done/nd*100);const stk=habitStreak(h);
+      hh+='<div class="pbar"><div class="pbar-top"><span class="pn">'+h.emoji+' '+esc(h.label)+(stk>0?' <span class="fire">🔥 '+stk+'</span>':'')+'</span><span class="pv">'+done+'/'+nd+' · '+pct+'%</span></div><div class="pbar-track"><div class="pbar-fill" style="width:'+pct+'%;background:var(--accent2)"></div></div></div>';});
+    hh+='<div class="cap"><b>Para que serve:</b> em quantos dos últimos '+nd+' dias você cumpriu cada hábito (meta batida, no caso dos contadores). Ajuda a ver quais estão consistentes e quais estão escapando.</div>';
+    hb.innerHTML=hh;m.appendChild(hb);}
   const ac=document.createElement('div');ac.className='card';ac.innerHTML='<div class="section-title">Sequências e conquistas</div><div class="streak-row" id="aStreaks"></div><div id="achBody"></div>';m.appendChild(ac);
   setTimeout(()=>{
     const ks=Object.keys(bc),labels=ks.map(catLabel),data=ks.map(k=>Math.round(bc[k]/60*10)/10),cols=ks.map(catColor);
@@ -769,7 +818,7 @@ function renderAnalytics(m){
     list.forEach(a=>{const dt=new Date(a.date+'T12:00:00');wd[(dt.getDay()+6)%7]+=durMin(a);});
     mk('cWeekday',{type:'bar',data:{labels:wlab,datasets:[{data:wd.map(v=>Math.round(v/60*10)/10),backgroundColor:accentColor(),borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw+'h'}}},scales:{x:{ticks:{color:'#9aa0ac',font:{size:10}},grid:{display:false}},y:{ticks:{color:'#9aa0ac',font:{size:10},callback:v=>v+'h'},grid:{color:'rgba(255,255,255,.05)'}}}}});
     const nd=st.period==='week'?7:30;const tl=[],tv=[];const dd=new Date();dd.setDate(dd.getDate()-(nd-1));
-    for(let i=0;i<nd;i++){const ds=dateStr(dd);const mn=db.activities.filter(a=>a.date===ds).reduce((s,a)=>s+durMin(a),0);tl.push(dd.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));tv.push(Math.round(mn/60*10)/10);dd.setDate(dd.getDate()+1);}
+    for(let i=0;i<nd;i++){const ds=dateStr(dd);const mn=db.activities.filter(a=>a.date===ds&&!st.anEx.includes(a.cat)).reduce((s,a)=>s+durMin(a),0);tl.push(dd.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));tv.push(Math.round(mn/60*10)/10);dd.setDate(dd.getDate()+1);}
     mk('cTrend',{type:'line',data:{labels:tl,datasets:[{data:tv,borderColor:'#00c896',backgroundColor:'rgba(0,200,150,.12)',fill:true,tension:.3,pointRadius:st.period==='week'?4:0,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw+'h'}}},scales:{x:{ticks:{color:'#9aa0ac',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#9aa0ac',font:{size:10},callback:v=>v+'h'},grid:{color:'rgba(255,255,255,.05)'}}}}});
     const mat=Array.from({length:7},()=>new Array(8).fill(0));let mx=0;
     list.forEach(a=>{if(!a.start)return;const dt=new Date(a.date+'T12:00:00');const g=(dt.getDay()+6)%7;const blk=Math.min(7,Math.floor(parseInt(a.start.split(':')[0],10)/3));mat[g][blk]+=durMin(a)||30;});
@@ -789,6 +838,7 @@ function renderAnalytics(m){
   },60);
 }
 function setPeriod(p){st.period=p;render();}
+function anToggle(c){const i=st.anEx.indexOf(c);if(i>=0)st.anEx.splice(i,1);else st.anEx.push(c);render();}
 function setGoal(cat,v){db.goals[cat]=Math.max(0,parseInt(v,10)||0);save();}
 
 /* ===== GASTOS / FINANÇAS ===== */
@@ -813,7 +863,7 @@ function recOccsInMonth(r,y,mi){const startD=new Date(r.start+'T12:00:00');const
   else if(r.freq==='weekly'){let d=new Date(startD);while(d<mStart)d.setDate(d.getDate()+7);while(d<=mEnd){occ.push(dateStr(new Date(d)));d.setDate(d.getDate()+7);}}
   return occ;}
 function effectiveMonth(y,mi){const ym=y+'-'+String(mi+1).padStart(2,'0');const real=db.fin.filter(e=>e.date.slice(0,7)===ym);const virt=[];
-  (db.finRec||[]).forEach(r=>recOccsInMonth(r,y,mi).forEach(ds=>virt.push({id:r.id+'@'+ds,kind:r.kind,date:ds,amount:r.amount,tema:r.tema,note:r.note,method:r.method,sub:r.sub,sub2:r.sub2,rec:true,ruleId:r.id,freq:r.freq})));
+  (db.finRec||[]).forEach(r=>recOccsInMonth(r,y,mi).forEach(ds=>virt.push({id:r.id+'@'+ds,kind:r.kind,date:ds,amount:r.amount,tema:r.tema,note:r.note,method:r.method,sub:r.sub,sub2:r.sub2,rec:true,ruleId:r.id,freq:r.freq,planned:r.planned})));
   return real.concat(virt);}
 function countRecUntil(r,lastDay){const start=new Date(r.start+'T12:00:00');const end=new Date(lastDay+'T12:00:00');if(start>end)return 0;
   if(r.freq==='weekly')return Math.floor((end-start)/(7*86400000))+1;const ms=start.getFullYear()*12+start.getMonth(),me=end.getFullYear()*12+end.getMonth();return (me-ms)+1;}
@@ -839,20 +889,36 @@ function addFin(){
   const date=document.getElementById('fnDate').value;
   if(amount<=0||!date){uiAlert('Informe um valor e uma data válidos.');return;}
   const note=document.getElementById('fnNote').value.trim();
+  const planned=!!((document.getElementById('fnPlanned')||{}).checked);
+  if(st.editFin){
+    if(st.editFin.kind==='rule'){const r=db.finRec.find(x=>x.id===st.editFin.id);const nf=document.getElementById('fnRecFreq').value;const src=document.getElementById('fnSource').value.trim()||'Receita';
+      if(r){if(nf==='once'){db.finRec=db.finRec.filter(x=>x.id!==r.id);db.fin.push({id:genId(),kind:'receita',date,amount,tema:src,note,planned});}else{r.amount=amount;r.start=date;r.freq=nf;r.tema=src;r.note=note;r.planned=planned;}}
+    }else{const e=db.fin.find(x=>x.id===st.editFin.id);
+      if(e){e.kind=kind;e.amount=amount;e.date=date;e.note=note;e.planned=planned;
+        if(kind==='gasto'){e.method=document.getElementById('fnMethod').value;let tema=document.getElementById('fnTema').value,sub=document.getElementById('fnSub').value,sub2=document.getElementById('fnSub2').value;if(tema==='__new__')tema='';if(sub==='__new__')sub='';if(sub2==='__new__')sub2='';e.tema=tema;e.sub=sub;e.sub2=sub2;}
+        else{e.tema=document.getElementById('fnSource').value.trim()||'Receita';delete e.method;delete e.sub;delete e.sub2;delete e.group;delete e.part;delete e.parts;}}
+    }
+    st.editFin=null;save();render();window.scrollTo(0,0);return;
+  }
   if(kind==='receita'){const tema=document.getElementById('fnSource').value.trim()||'Receita';const freq=document.getElementById('fnRecFreq').value;
-    if(freq==='once')db.fin.push({id:genId(),kind:'receita',date,amount,tema,note});
-    else db.finRec.push({id:genId(),kind:'receita',freq,start:date,amount,tema,note});}
+    if(freq==='once')db.fin.push({id:genId(),kind:'receita',date,amount,tema,note,planned});
+    else db.finRec.push({id:genId(),kind:'receita',freq,start:date,amount,tema,note,planned});}
   else{
     const method=document.getElementById('fnMethod').value;
     let tema=document.getElementById('fnTema').value;let sub=document.getElementById('fnSub').value;let sub2=document.getElementById('fnSub2').value;
     if(tema==='__new__')tema='';if(sub==='__new__')sub='';if(sub2==='__new__')sub2='';
     const parts=Math.max(1,parseInt(document.getElementById('fnParts').value,10)||1);
+    const defer=parseInt((document.getElementById('fnDefer')||{}).value,10)||0;
     const group=parts>1?genId():null;const base=Math.floor(amount/parts*100)/100;
     for(let i=0;i<parts;i++){let amt=base;if(i===parts-1)amt=Math.round((amount-base*(parts-1))*100)/100;
-      db.fin.push({id:genId(),kind:'gasto',date:addMonthsStr(date,i),amount:amt,method,tema,sub,sub2,note,group,part:parts>1?i+1:null,parts:parts>1?parts:null});}
+      db.fin.push({id:genId(),kind:'gasto',date:addMonthsStr(date,defer+i),amount:amt,method,tema,sub,sub2,note,group,part:parts>1?i+1:null,parts:parts>1?parts:null,planned});}
   }
   save();render();
 }
+function editFin(id){st.editFin={kind:'entry',id};st.tab='finance';render();window.scrollTo(0,0);}
+function editFinRec(id){st.editFin={kind:'rule',id};st.tab='finance';render();window.scrollTo(0,0);}
+function cancelEditFin(){st.editFin=null;render();window.scrollTo(0,0);}
+function finToggle(t){const i=st.finEx.indexOf(t);if(i>=0)st.finEx.splice(i,1);else st.finEx.push(t);render();}
 function delFin(id){const e=db.fin.find(x=>x.id===id);if(!e)return;
   if(e.group)uiConfirm('Este gasto é parcelado. Excluir TODAS as parcelas?',()=>{db.fin=db.fin.filter(x=>x.group!==e.group);save();render();},'Excluir tudo');
   else uiConfirm('Excluir este lançamento?',()=>{db.fin=db.fin.filter(x=>x.id!==id);save();render();},'Excluir');}
@@ -873,26 +939,45 @@ function renderFinance(m){
     '<div class="hint">Saldo do mês = receitas − gastos (incluindo parcelas que caem neste mês). Saldo acumulado = tudo que entrou menos tudo que saiu até o fim deste mês.</div>';
   m.appendChild(nav);
   const dlTema=uniq(db.fin.filter(e=>e.kind==='gasto').map(e=>e.tema));const dlSub=uniq(db.fin.map(e=>e.sub));const dlSub2=uniq(db.fin.map(e=>e.sub2));const dlSrc=uniq(db.fin.filter(e=>e.kind==='receita').map(e=>e.tema));
+  let edEntry=null,edRule=null;
+  if(st.editFin){if(st.editFin.kind==='entry')edEntry=db.fin.find(x=>x.id===st.editFin.id);else edRule=db.finRec.find(r=>r.id===st.editFin.id);}
+  const edF=edEntry||edRule;
+  const edKind=edEntry?edEntry.kind:(edRule?'receita':'gasto');
+  const edAmount=edEntry?edEntry.amount:(edRule?edRule.amount:'');
+  const edDate=edEntry?edEntry.date:(edRule?edRule.start:todayStr());
+  const edFreq=edRule?edRule.freq:'once';
+  const edSrc=edF?(edF.tema||''):'';
   const form=document.createElement('div');form.className='card';
-  form.innerHTML='<div class="section-title">Novo lançamento</div>'+
-    '<div class="row2"><div class="field"><label>Tipo</label><select id="fnKind" onchange="finKindChange()"><option value="gasto" selected>Gasto</option><option value="receita">Receita</option></select></div>'+
-    '<div class="field"><label>Valor (R$)</label><input type="number" id="fnAmount" min="0" step="0.01" placeholder="0,00"></div></div>'+
-    '<div class="field"><label>Data</label><input type="date" id="fnDate" value="'+todayStr()+'"></div>'+
+  const kOpt=(v,l)=>'<option value="'+v+'"'+(edKind===v?' selected':'')+'>'+l+'</option>';
+  const mOpt=METHODS.map(x=>'<option value="'+x[0]+'"'+(edEntry&&edEntry.method===x[0]?' selected':'')+'>'+x[1]+' '+x[2]+'</option>').join('');
+  const fOpt=(v,l)=>'<option value="'+v+'"'+(edFreq===v?' selected':'')+'>'+l+'</option>';
+  form.innerHTML='<div class="section-title">'+(edF?'Editar lançamento':'Novo lançamento')+'</div>'+
+    '<div class="row2"><div class="field"><label>Tipo</label><select id="fnKind" onchange="finKindChange()"'+(edF?' disabled':'')+'>'+kOpt('gasto','Gasto')+kOpt('receita','Receita')+'</select></div>'+
+    '<div class="field"><label>Valor (R$)</label><input type="number" id="fnAmount" min="0" step="0.01" placeholder="0,00" value="'+edAmount+'"></div></div>'+
+    '<div class="field"><label>Data</label><input type="date" id="fnDate" value="'+edDate+'"></div>'+
+    '<div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--text)"><input type="checkbox" id="fnPlanned" style="width:auto;margin:0" '+(edF&&edF.planned?'checked':'')+'> 📋 Planejado / previsto</label></div>'+
     '<div id="gastoFields">'+
-      '<div class="field"><label>Meio de pagamento</label><select id="fnMethod">'+METHODS.map(x=>'<option value="'+x[0]+'">'+x[1]+' '+x[2]+'</option>').join('')+'</select></div>'+
+      '<div class="field"><label>Meio de pagamento</label><select id="fnMethod">'+mOpt+'</select></div>'+
       '<div class="field"><label>Tema</label><select id="fnTema" onchange="finTemaChange()"></select></div>'+
       '<div class="field"><label>Subtema</label><select id="fnSub" onchange="finSubChange()"></select></div>'+
       '<div class="field"><label>Sub-subtema</label><select id="fnSub2" onchange="finSub2Change()"></select></div>'+
-      '<div class="field"><label>Parcelas</label><input type="number" id="fnParts" min="1" value="1"></div></div>'+
-    '<div id="receitaFields" style="display:none"><div class="field"><label>Fonte</label><input type="text" id="fnSource" list="dlSrc" placeholder="Ex.: Salário"></div>'+
-      '<div class="field"><label>Repetição</label><select id="fnRecFreq"><option value="once" selected>Única</option><option value="monthly">🔁 Todo mês</option><option value="weekly">🔁 Toda semana</option></select></div></div>'+
-    '<div class="field"><label>Observação (opcional)</label><input type="text" id="fnNote" placeholder=""></div>'+
-    '<button class="btn" onclick="addFin()">Adicionar lançamento</button>'+
-    '<div class="hint">Em <b>Parcelas</b>, informe em quantas vezes dividir o gasto — o app projeta uma parte para cada mês seguinte automaticamente.</div>'+
+      (edEntry?'':'<div class="row2"><div class="field"><label>Parcelas</label><input type="number" id="fnParts" min="1" value="1"></div>'+
+      '<div class="field"><label>Cobrança</label><select id="fnDefer"><option value="0" selected>No mês da compra</option><option value="1">No próximo mês</option></select></div></div>')+'</div>'+
+    '<div id="receitaFields" style="display:none"><div class="field"><label>Fonte</label><input type="text" id="fnSource" list="dlSrc" placeholder="Ex.: Salário" value="'+esc(edSrc)+'"></div>'+
+      (edEntry?'':'<div class="field"><label>Repetição</label><select id="fnRecFreq">'+fOpt('once','Única')+fOpt('monthly','🔁 Todo mês')+fOpt('weekly','🔁 Toda semana')+'</select></div>')+'</div>'+
+    '<div class="field"><label>Observação (opcional)</label><input type="text" id="fnNote" placeholder="" value="'+(edF?esc(edF.note||''):'')+'"></div>'+
+    '<button class="btn" onclick="addFin()">'+(edF?'Atualizar lançamento':'Adicionar lançamento')+'</button>'+
+    (edF?'<button class="btn" style="margin-top:8px;background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="cancelEditFin()">Cancelar edição</button>':'')+
+    '<div class="hint">'+(edF?'Você está editando um lançamento existente. Ajuste o valor (ou desmarque “Planejado” quando confirmar) e toque em Atualizar.':'Em <b>Parcelas</b>, divida o gasto em vezes (uma parte por mês). Em <b>Cobrança</b>, escolha “No próximo mês” para compras no cartão que só entram na próxima fatura. Marque <b>Planejado</b> para um valor previsto; quando souber o valor real, toque no lápis ✎ do lançamento e ajuste.')+'</div>'+
     '<datalist id="dlTema">'+dlTema.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist><datalist id="dlSub">'+dlSub.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist><datalist id="dlSub2">'+dlSub2.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist><datalist id="dlSrc">'+dlSrc.map(v=>'<option value="'+esc(v)+'">').join('')+'</datalist>';
   m.appendChild(form);
   fillFinSelects();
-  if(monthE.some(e=>e.kind==='gasto')){const ch=document.createElement('div');ch.className='card';ch.innerHTML='<div class="section-title">Gastos por tema (mês)</div><div class="legend" id="finLeg"></div><div class="chart-wrap" style="height:200px"><canvas id="cFinTema"></canvas></div>';m.appendChild(ch);}
+  if(edEntry&&edEntry.kind==='gasto'){const te=document.getElementById('fnTema');if(te){te.value=edEntry.tema||'';document.getElementById('fnSub').innerHTML=finSubOptions(te.value);document.getElementById('fnSub').value=edEntry.sub||'';document.getElementById('fnSub2').innerHTML=finSub2Options(te.value,edEntry.sub||'');document.getElementById('fnSub2').value=edEntry.sub2||'';}}
+  if(edF)finKindChange();
+  if(monthE.some(e=>e.kind==='gasto')){const gastoTemas=[...new Set(monthE.filter(e=>e.kind==='gasto').map(e=>e.tema||'Sem tema'))];
+    const ch=document.createElement('div');ch.className='card';
+    const chips=gastoTemas.length>1?'<div class="filter-row">'+gastoTemas.map(t=>'<span class="chip'+(st.finEx.includes(t)?' ex':'')+'" data-t="'+esc(t)+'" onclick="finToggle(this.dataset.t)">'+esc(t)+'</span>').join('')+'</div>':'';
+    ch.innerHTML='<div class="section-title">Gastos por tema (mês)</div>'+chips+'<div class="legend" id="finLeg"></div><div class="chart-wrap" style="height:200px"><canvas id="cFinTema"></canvas></div>'+(gastoTemas.length>1?'<div class="cap">Toque numa etiqueta acima para tirar (ou recolocar) um tema do gráfico.</div>':'');m.appendChild(ch);}
   const proj=document.createElement('div');proj.className='card';proj.innerHTML='<div class="section-title">Projeção de gastos (6 meses)</div><div class="chart-wrap" style="height:200px"><canvas id="cFinProj"></canvas></div><div class="hint">Inclui as parcelas já lançadas que vencem nos próximos meses.</div>';m.appendChild(proj);
   const listC=document.createElement('div');listC.className='card';listC.innerHTML='<div class="section-title">Lançamentos de '+MONTHS[st.finM]+'</div>';
   const sorted=monthE.slice().sort((a,b)=>b.date.localeCompare(a.date));
@@ -900,17 +985,18 @@ function renderFinance(m){
   sorted.forEach(e=>{const isG=e.kind==='gasto';const mm=isG?methodMeta(e.method):['rec','💰','Receita'];
     const sub=[e.sub,e.sub2].filter(Boolean).join(' › ');
     const recl=e.rec?('🔁 '+(e.freq==='monthly'?'mensal':'semanal')):'';
-    const meta=[isG?mm[2]:'Receita',sub,recl,(e.part?'parcela '+e.part+'/'+e.parts:''),e.date.slice(8,10)+'/'+e.date.slice(5,7)].filter(Boolean).join(' · ');
+    const meta=[isG?mm[2]:'Receita',(e.planned?'📋 previsto':''),sub,recl,(e.part?'parcela '+e.part+'/'+e.parts:''),e.date.slice(8,10)+'/'+e.date.slice(5,7)].filter(Boolean).join(' · ');
     const del=e.rec?('delFinRec(\''+e.ruleId+'\')'):('delFin(\''+e.id+'\')');
-    const row=document.createElement('div');row.className='fin-item';
+    const edit=e.rec?('editFinRec(\''+e.ruleId+'\')'):('editFin(\''+e.id+'\')');
+    const row=document.createElement('div');row.className='fin-item'+(e.planned?' planned':'');
     row.innerHTML='<div class="fin-ic" style="background:'+(isG?'rgba(255,107,107,.15)':'rgba(0,200,150,.15)')+'">'+mm[1]+'</div>'+
       '<div class="fin-body"><div class="fin-t">'+esc(e.tema||(isG?'Gasto':'Receita'))+'</div><div class="fin-m">'+esc(meta)+(e.note?' · '+esc(e.note):'')+'</div></div>'+
       '<div class="fin-amt '+(isG?'neg':'pos')+'">'+(isG?'−':'+')+fmtMoney(e.amount)+'</div>'+
-      '<button class="icon-btn danger" onclick="'+del+'">🗑</button>';
+      '<div class="t-actions"><button class="icon-btn" onclick="'+edit+'">&#9998;</button><button class="icon-btn danger" onclick="'+del+'">🗑</button></div>';
     listC.appendChild(row);});
   m.appendChild(listC);
   setTimeout(()=>{
-    if(document.getElementById('cFinTema')){const byTema={};monthE.filter(e=>e.kind==='gasto').forEach(e=>{const t=e.tema||'Sem tema';byTema[t]=(byTema[t]||0)+e.amount;});
+    if(document.getElementById('cFinTema')){const byTema={};monthE.filter(e=>e.kind==='gasto').forEach(e=>{const t=e.tema||'Sem tema';if(st.finEx.includes(t))return;byTema[t]=(byTema[t]||0)+e.amount;});
       const ks=Object.keys(byTema);const cols=ks.map((_,i)=>PALETTE[i%PALETTE.length]);
       const leg=document.getElementById('finLeg');ks.forEach((k,i)=>{const s=document.createElement('span');s.className='legend-item';s.innerHTML='<span class="legend-dot" style="background:'+cols[i]+'"></span>'+esc(k)+': '+fmtMoney(byTema[k]);leg.appendChild(s);});
       mk('cFinTema',{type:'doughnut',data:{labels:ks,datasets:[{data:ks.map(k=>byTema[k]),backgroundColor:cols,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.label+': '+fmtMoney(c.raw)}}}}});}
@@ -927,6 +1013,8 @@ window.addCat=addCat;window.renameCat=renameCat;window.cycleColor=cycleColor;win
 window.setHabitField=setHabitField;window.addHabit=addHabit;window.delHabit=delHabit;window.exportData=exportData;window.importData=importData;
 window.finMove=finMove;window.addFin=addFin;window.delFin=delFin;window.finKindChange=finKindChange;
 window.calSelMove=calSelMove;window.monthDayHint=monthDayHint;window.setTheme=setTheme;
+window.editTask=editTask;window.cancelEditTask=cancelEditTask;window.anToggle=anToggle;
+window.editFin=editFin;window.editFinRec=editFinRec;window.cancelEditFin=cancelEditFin;window.finToggle=finToggle;
 window.authLogin=authLogin;window.authSignup=authSignup;window.authReset=authReset;window.authSkip=authSkip;window.authLogout=authLogout;window.showLogin=showLogin;
 window.finTemaChange=finTemaChange;window.finSubChange=finSubChange;window.finSub2Change=finSub2Change;window.delFinRec=delFinRec;
 window.selFcTema=selFcTema;window.selFcSub=selFcSub;window.addFinTema=addFinTema;window.delFinTema=delFinTema;window.addFinSub=addFinSub;window.delFinSub=delFinSub;window.addFinSub2=addFinSub2;window.delFinSub2=delFinSub2;
