@@ -49,6 +49,7 @@ header p{font-size:13px;color:var(--text2);margin-top:2px}
 .field{margin-bottom:14px}
 .field label{font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
 .field input,.field select,.field textarea{width:100%;font-size:16px;padding:11px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none;appearance:none}
+.field input[type=checkbox]{width:20px;height:20px;-webkit-appearance:auto;appearance:auto;accent-color:var(--accent);padding:0;flex:0 0 auto}
 .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
 .field textarea{resize:vertical;min-height:64px;line-height:1.5}
 .field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa0ac' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px;padding-right:36px}
@@ -233,6 +234,7 @@ nav button{font-size:9px;padding:9px 1px 11px}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const DEFAULT_CATS=[
@@ -628,7 +630,7 @@ function renderCalendar(m){
     const cls='cal-day'+(ds===todayS?' today':'')+(ds===st.calSel?' sel':'');
     const e=document.createElement('div');e.className=cls;
     e.innerHTML='<span>'+d+'</span><div class="cal-dots">'+dots+'</div>'+(tasks.length?'<div class="cal-task"></div>':'');
-    e.onclick=()=>selectCalDay(ds,e);
+    e.onclick=()=>selectCalDay(ds);
     grid.appendChild(e);
   }
   head.appendChild(grid);
@@ -650,13 +652,7 @@ function fillCalDetail(detail,sel){
   const btn=document.createElement('button');btn.className='btn';btn.style.marginTop='14px';btn.textContent='+ Registrar atividade neste dia';btn.onclick=()=>{st.prefillDate=sel;go('add');};
   detail.appendChild(btn);
 }
-function selectCalDay(ds,cell){
-  st.calSel=ds;
-  if(cell&&cell.parentNode){cell.parentNode.querySelectorAll('.cal-day.sel').forEach(c=>c.classList.remove('sel'));cell.classList.add('sel');}
-  const det=document.getElementById('calDetail');
-  if(det){fillCalDetail(det,ds);det.scrollIntoView({behavior:'smooth',block:'start'});}
-  else render();
-}
+function selectCalDay(ds){st.calSel=ds;render();const det=document.getElementById('calDetail');if(det)det.scrollIntoView({behavior:'smooth',block:'nearest'});}
 function hm2min(hm){const[h,m]=hm.split(':').map(Number);return h*60+m;}
 function dayEvents(sel){const dObj=new Date(sel+'T12:00:00');const evs=[];
   actsOn(sel).forEach(a=>{if(!a.start)return;const sm=hm2min(a.start);const dm=durMin(a)||30;evs.push({sm,em:Math.min(1440,sm+dm),color:catColor(a.cat),title:a.detail||a.theme||catLabel(a.cat),time:a.start+(a.end?'–'+a.end:''),task:false,id:a.id});});
@@ -747,7 +743,7 @@ function renderSettings(m){
 
   // backup
   const c4=document.createElement('div');c4.className='card';
-  c4.innerHTML='<div class="section-title">Backup dos dados</div><div class="toolbar" style="margin:0"><button class="tool-btn" onclick="exportData()">⬇ Exportar</button><button class="tool-btn" onclick="importData()">⬆ Importar</button></div><div class="hint">Os dados ficam salvos no seu aparelho. Exporte de tempos em tempos para não perder nada.</div>';
+  c4.innerHTML='<div class="section-title">Backup dos dados</div><div class="toolbar" style="margin:0"><button class="tool-btn" onclick="exportExcel()">📊 Exportar Excel</button><button class="tool-btn" onclick="exportData()">⬇ Exportar .json</button><button class="tool-btn" onclick="importData()">⬆ Importar</button></div><div class="hint">O <b>Excel</b> abre suas atividades, tarefas, finanças e hábitos em planilhas separadas — bom para consultar. O <b>.json</b> é o backup completo que pode ser reimportado aqui no app.</div>';
   m.appendChild(c4);
 }
 function slug(s){return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||'x';}
@@ -764,6 +760,28 @@ function setThemeCat(v){st.themeCat=v;render();}
 function addTheme(){const v=document.getElementById('newTheme').value.trim();if(!v)return;if(!db.themes[st.themeCat])db.themes[st.themeCat]=[];if(!db.themes[st.themeCat].includes(v))db.themes[st.themeCat].push(v);save();render();}
 function delTheme(cat,t){db.themes[cat]=(db.themes[cat]||[]).filter(x=>x!==t);save();render();}
 function exportData(){const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='rotina24h-backup.json';a.click();URL.revokeObjectURL(url);}
+function exportExcel(){
+  if(typeof XLSX==='undefined'){uiAlert('A planilha ainda não carregou. Conecte-se à internet uma vez e tente de novo (ou use Exportar .json).');return;}
+  const MO=['Muito ruim','Ruim','Neutro','Bom','Ótimo'];
+  const actAoa=[['Data','Início','Término','Duração (min)','Categoria','Tema','Detalhe','Prioridade','Humor','Observações']];
+  db.activities.slice().sort((a,b)=>(a.date+(a.start||'')).localeCompare(b.date+(b.start||''))).forEach(a=>actAoa.push([a.date,a.start||'',a.end||'',durMin(a),catLabel(a.cat),a.theme||'',a.detail||'',a.prio||'',a.mood?MO[a.mood-1]:'',a.notes||'']));
+  const tkAoa=[['Tarefa','Repetição','Categoria','Tema','Subtema','Início','Término','Quando']];
+  db.tasks.forEach(t=>tkAoa.push([t.title,recurLabel(t),t.cat?catLabel(t.cat):'',t.tema||'',t.sub||'',t.time||'',t.end||'',t.type==='once'?(t.date||''):(t.type==='weekly'?(t.weekdays||[]).map(i=>WD[i]).join('/'):(t.type==='monthly'?'dia '+t.monthDay:'todo dia'))]));
+  const finAoa=[['Data','Tipo','Valor (R$)','Meio','Tema','Subtema','Sub-subtema','Parcela','Recorrência','Planejado','Observação']];
+  db.fin.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>finAoa.push([e.date,e.kind==='gasto'?'Gasto':'Receita',e.amount,e.kind==='gasto'?methodMeta(e.method)[2]:'',e.tema||'',e.sub||'',e.sub2||'',e.part?(e.part+'/'+e.parts):'','',e.planned?'sim':'',e.note||'']));
+  (db.finRec||[]).forEach(r=>finAoa.push([r.start,r.kind==='gasto'?'Gasto':'Receita',r.amount,r.kind==='gasto'?methodMeta(r.method)[2]:'',r.tema||'',r.sub||'',r.sub2||'','',(r.freq==='monthly'?'mensal':'semanal'),r.planned?'sim':'',r.note||'']));
+  const habAoa=[['Hábito','Tipo','Meta','Sequência (dias)']];
+  db.habits.forEach(h=>habAoa.push([h.emoji+' '+h.label,h.type==='counter'?'Contador':'Sim/Não',h.type==='counter'?(h.goal||1):'',habitStreak(h)]));
+  const logAoa=[['Data'].concat(db.habits.map(h=>h.label))];
+  Object.keys(db.daily).sort().forEach(ds=>{const row=[ds];db.habits.forEach(h=>{const v=habitVal(ds,h);row.push(h.type==='counter'?(v||0):(v?'sim':''));});logAoa.push(row);});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(actAoa),'Atividades');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tkAoa),'Tarefas');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(finAoa),'Finanças');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(habAoa),'Hábitos');
+  if(db.habits.length)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(logAoa),'Registro de hábitos');
+  XLSX.writeFile(wb,'rotina24h-'+todayStr()+'.xlsx');
+}
 function importData(){const inp=document.createElement('input');inp.type='file';inp.accept='.json';inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(Array.isArray(d))db.activities=d;else db=Object.assign(db,d);save();render();uiAlert('Dados importados!');}catch(err){uiAlert('Arquivo inválido.');}};r.readAsText(f);};inp.click();}
 
 /* ===== STREAKS / CONQUISTAS ===== */
@@ -926,17 +944,20 @@ function renderFinance(m){
   const ym=finYM();const monthE=effectiveMonth(st.finY,st.finM);
   const rec=monthE.filter(e=>e.kind==='receita').reduce((s,e)=>s+e.amount,0);
   const gas=monthE.filter(e=>e.kind==='gasto').reduce((s,e)=>s+e.amount,0);
+  const recPago=monthE.filter(e=>e.kind==='receita'&&!e.planned).reduce((s,e)=>s+e.amount,0);
+  const gasPago=monthE.filter(e=>e.kind==='gasto'&&!e.planned).reduce((s,e)=>s+e.amount,0);
   const lastDay=dateStr(new Date(st.finY,st.finM+1,0));
   const acumRec=sumUntil('receita',lastDay);
   const acumGas=sumUntil('gasto',lastDay);
-  const saldoMes=rec-gas,saldoAcum=acumRec-acumGas;
+  const saldoPago=recPago-gasPago,saldoPrev=rec-gas,saldoAcum=acumRec-acumGas;
   const nav=document.createElement('div');nav.className='card';
   nav.innerHTML='<div class="mnav"><button class="cal-nav" onclick="finMove(-1)">‹</button><div class="mm">'+MONTHS[st.finM]+' '+st.finY+'</div><button class="cal-nav" onclick="finMove(1)">›</button></div>'+
-    '<div class="fin-bal"><div class="b"><div class="bv '+(saldoMes>=0?'pos':'neg')+'">'+fmtMoney(saldoMes)+'</div><div class="bl">Saldo do mês</div></div>'+
-    '<div class="b"><div class="bv '+(saldoAcum>=0?'pos':'neg')+'">'+fmtMoney(saldoAcum)+'</div><div class="bl">Saldo acumulado</div></div></div>'+
+    '<div class="fin-bal"><div class="b"><div class="bv '+(saldoPago>=0?'pos':'neg')+'">'+fmtMoney(saldoPago)+'</div><div class="bl">Saldo do mês (pago)</div></div>'+
+    '<div class="b"><div class="bv '+(saldoPrev>=0?'pos':'neg')+'">'+fmtMoney(saldoPrev)+'</div><div class="bl">Saldo do mês (previsto)</div></div></div>'+
     '<div class="fin-bal"><div class="b"><div class="bv pos">'+fmtMoney(rec)+'</div><div class="bl">Receitas do mês</div></div>'+
     '<div class="b"><div class="bv neg">'+fmtMoney(gas)+'</div><div class="bl">Gastos do mês</div></div></div>'+
-    '<div class="hint">Saldo do mês = receitas − gastos (incluindo parcelas que caem neste mês). Saldo acumulado = tudo que entrou menos tudo que saiu até o fim deste mês.</div>';
+    '<div class="fin-bal"><div class="b" style="grid-column:1/-1"><div class="bv '+(saldoAcum>=0?'pos':'neg')+'">'+fmtMoney(saldoAcum)+'</div><div class="bl">Saldo acumulado (até o fim do mês)</div></div></div>'+
+    '<div class="hint"><b>Pago</b> = só o que já foi confirmado (sem os itens marcados como “planejado”). <b>Previsto</b> = inclui também os lançamentos planejados. Receitas/Gastos do mês mostram o total previsto. Saldo acumulado = tudo que entrou menos tudo que saiu até o fim deste mês.</div>';
   m.appendChild(nav);
   const dlTema=uniq(db.fin.filter(e=>e.kind==='gasto').map(e=>e.tema));const dlSub=uniq(db.fin.map(e=>e.sub));const dlSub2=uniq(db.fin.map(e=>e.sub2));const dlSrc=uniq(db.fin.filter(e=>e.kind==='receita').map(e=>e.tema));
   let edEntry=null,edRule=null;
@@ -1010,7 +1031,7 @@ window.incHabit=incHabit;window.togHabit=togHabit;
 window.addTask=addTask;window.delTask=delTask;window.setTaskStatus=setTaskStatus;window.planTypeChange=planTypeChange;window.toggleWd=toggleWd;window.planCatChange=planCatChange;
 window.calMove=calMove;window.setPeriod=setPeriod;window.setGoal=setGoal;
 window.addCat=addCat;window.renameCat=renameCat;window.cycleColor=cycleColor;window.delCat=delCat;window.setThemeCat=setThemeCat;window.addTheme=addTheme;window.delTheme=delTheme;
-window.setHabitField=setHabitField;window.addHabit=addHabit;window.delHabit=delHabit;window.exportData=exportData;window.importData=importData;
+window.setHabitField=setHabitField;window.addHabit=addHabit;window.delHabit=delHabit;window.exportData=exportData;window.exportExcel=exportExcel;window.importData=importData;
 window.finMove=finMove;window.addFin=addFin;window.delFin=delFin;window.finKindChange=finKindChange;
 window.calSelMove=calSelMove;window.monthDayHint=monthDayHint;window.setTheme=setTheme;
 window.editTask=editTask;window.cancelEditTask=cancelEditTask;window.anToggle=anToggle;
