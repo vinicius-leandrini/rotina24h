@@ -184,6 +184,10 @@ nav button{font-size:9px;padding:9px 1px 11px}
 .grp-h:first-of-type{margin-top:4px}
 .grp-l{font-size:13px;font-weight:600;color:var(--text);text-transform:capitalize}
 .grp-v{font-size:11px;font-weight:600;white-space:nowrap}
+.fin-sum{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:12px}
+.fs-h{font-size:11px;color:var(--text2);font-weight:600;margin-bottom:7px;text-transform:capitalize}
+.fs-row{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--text2)}
+.fs-row b{font-weight:700}
 .todo-item{display:flex;align-items:center;gap:11px;padding:11px 10px;border-radius:var(--r-sm);background:var(--surface2);margin-bottom:8px}
 .todo-item.done{opacity:.55}
 .todo-item.done .todo-t{text-decoration:line-through}
@@ -1181,32 +1185,27 @@ function renderFinance(m){
     if(F.line&&!((e.kind==='receita'&&e.tema===F.line)||(e.kind==='gasto'&&e.fromInc===F.line)))return false;
     return true;
   });
-  if(st.finView==='day'){
-    const dayItems=filtered.filter(e=>e.date===st.finDay);
-    if(!dayItems.length){listC.innerHTML+='<div style="font-size:13px;color:var(--text2)">Nenhum lançamento neste dia'+(active?' com esses filtros':'')+'.</div>';}
-    else{
-      const g=dayItems.filter(x=>x.kind==='gasto').reduce((s,x)=>s+x.amount,0);
-      const r=dayItems.filter(x=>x.kind==='receita').reduce((s,x)=>s+x.amount,0);
-      const vals=(r>0?'<span class="pos">+'+fmtMoney(r)+'</span>':'')+((r>0&&g>0)?' · ':'')+(g>0?'<span class="neg">−'+fmtMoney(g)+'</span>':'');
-      const h=document.createElement('div');h.className='grp-h';h.innerHTML='<span class="grp-l">'+finDayLabel(st.finDay)+'</span><span class="grp-v">'+vals+'</span>';listC.appendChild(h);
-      dayItems.forEach(e=>listC.appendChild(finRowEl(e)));
-    }
-  }
-  else if(!filtered.length){listC.innerHTML+='<div style="font-size:13px;color:var(--text2)">'+(active?'Nenhum lançamento com esses filtros.':'Nenhum lançamento neste mês.')+'</div>';}
-  else if(st.finView==='month'){filtered.forEach(e=>listC.appendChild(finRowEl(e)));}
+  const shown=st.finView==='day'?filtered.filter(e=>e.date===st.finDay):filtered;
+  if(!shown.length){listC.innerHTML+='<div style="font-size:13px;color:var(--text2)">'+(st.finView==='day'?('Nenhum lançamento neste dia'+(active?' com esses filtros':'')+'.'):(active?'Nenhum lançamento com esses filtros.':'Nenhum lançamento neste mês.'))+'</div>';}
   else{
-    const groups={},order=[];
-    filtered.forEach(e=>{const key=finWeekKey(e.date);if(!groups[key]){groups[key]=[];order.push(key);}groups[key].push(e);});
-    order.forEach(key=>{const items=groups[key];
-      const g=items.filter(x=>x.kind==='gasto').reduce((s,x)=>s+x.amount,0);
-      const r=items.filter(x=>x.kind==='receita').reduce((s,x)=>s+x.amount,0);
-      const label='Semana de '+finWeekLabel(key);
-      const vals=(r>0?'<span class="pos">+'+fmtMoney(r)+'</span>':'')+((r>0&&g>0)?' · ':'')+(g>0?'<span class="neg">−'+fmtMoney(g)+'</span>':'');
-      const h=document.createElement('div');h.className='grp-h';
-      h.innerHTML='<span class="grp-l">'+label+'</span><span class="grp-v">'+vals+'</span>';
-      listC.appendChild(h);
-      items.forEach(e=>listC.appendChild(finRowEl(e)));
-    });
+    const gT=shown.filter(x=>x.kind==='gasto').reduce((s,x)=>s+x.amount,0);
+    const rT=shown.filter(x=>x.kind==='receita').reduce((s,x)=>s+x.amount,0);
+    const net=rT-gT;const scope=st.finView==='day'?'do dia':'do mês';
+    listC.insertAdjacentHTML('beforeend','<div class="fin-sum"><div class="fs-h">Soma '+scope+(active?' · com filtros':'')+' · '+shown.length+' lançamento(s)</div><div class="fs-row"><span>Gastos <b class="neg">−'+fmtMoney(gT)+'</b></span><span>Receitas <b class="pos">+'+fmtMoney(rT)+'</b></span><span>Saldo <b class="'+(net>=0?'pos':'neg')+'">'+(net<0?'−':'')+fmtMoney(Math.abs(net))+'</b></span></div></div>');
+    if(st.finView==='week'){
+      const groups={},order=[];
+      shown.forEach(e=>{const key=finWeekKey(e.date);if(!groups[key]){groups[key]=[];order.push(key);}groups[key].push(e);});
+      order.forEach(key=>{const items=groups[key];
+        const g=items.filter(x=>x.kind==='gasto').reduce((s,x)=>s+x.amount,0);
+        const r=items.filter(x=>x.kind==='receita').reduce((s,x)=>s+x.amount,0);
+        const vals=(r>0?'<span class="pos">+'+fmtMoney(r)+'</span>':'')+((r>0&&g>0)?' · ':'')+(g>0?'<span class="neg">−'+fmtMoney(g)+'</span>':'');
+        const h=document.createElement('div');h.className='grp-h';
+        h.innerHTML='<span class="grp-l">Semana de '+finWeekLabel(key)+'</span><span class="grp-v">'+vals+'</span>';
+        listC.appendChild(h);
+        items.forEach(e=>listC.appendChild(finRowEl(e)));
+      });
+    }
+    else{shown.forEach(e=>listC.appendChild(finRowEl(e)));}
   }
   m.appendChild(listC);
   setTimeout(()=>{
